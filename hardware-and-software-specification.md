@@ -1,0 +1,2 @@
+# 🔢 Hardware and Software Specification
+
