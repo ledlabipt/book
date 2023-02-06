@@ -1,0 +1,164 @@
+BEGIN
+  // Declare Arrays
+  TweaksDefaultsArray()
+  TweaksStateArray()
+  StartupAppsRegeditArray()
+  StartupAppsShellArray()
+  StartupAppsTaskArray()
+  //StartupAppsServicesArray <- not used/implemented yet
+  StartupAppsArray()
+
+    // Checks For Internet Connection
+    BEGIN Initialize
+        IF InternetConnection() = True THEN 
+        //^^^Checks for Internet and if it is available, Checks for Updates
+            CheckUpdate()
+        ELSEIF InternetConnection() = False THEN
+        //^^^If Internet is not available, it will not check for updates
+            ModuleContructor() 
+        ENDIF
+    END Initialize
+
+
+
+    //Executes The Modules Required by the Application At Launch
+    BEGIN ModuleContructor
+        FileReader(TweakState) //Reads Tweak State File to Poulate Tweaks List
+        FileReader(TweakDefaults) //Reads Tweak Defaults File to Poulate Tweaks List
+        DetectStartupApps(QueryRegedit) //Detects Startup Apps in Registry and Populates Startup List
+        DetectStartupApps(QueryShell) //Detects Startup Apps in shell:startup folder and Populates Startup List
+        DetectStartupApps(QueryTask) //Detects Startup Apps in Task Scheduler and Populates Startup List
+        //DetectStartupApps(QueryServices) <- not used/implemented yet
+        FileReader(StartupApps) //Reads Startup Apps Regedit File to Poulate Startup Apps List
+    END ModuleContructor
+
+
+
+    //Checks for Updates
+    BEGIN CheckUpdate
+      CurrentVersion = Program.Version //Gets Current Version of Program
+      LatestVersion = "https://www.atomix.one/raw/LatestVersion.json" //Gets Latest Version of Program
+
+        IF CurrentVersion() < LatestVersion() THEN //If User is on an older version, it will prompt to update
+            MsgBox("New Update Available!!!", " Would you like to Update " + CurrentVersion() + " --> " + LatestVersion() + "?", "Yes", "No", "Changelog")
+            IF MsgBoxResult = 1 THEN //If User Clicks Yes, Update is Downloaded and Installed on next launch
+                Toast("Downloading Update...", " DO NOT CLOSE THE APPLICATION!!!") //Windows Notification
+                cmd = "Curl https://www.atomix.one/downloads/ASMPv" + LatestVersion() + ".exe --output ../Updates/ASMPv" + LatestVersion() + ".exe" //Downloading Latest Installer
+                MsgBox("Update Downloaded,", " The Application Will Now Exit, Update Will Be Installed on Next Launch.", "OK")
+                ProgramExit() //Exits Application
+            ELSEIF MsgBoxResult = 2 THEN //If User Selects No, Update will be skipped
+                MsgBox("Update Cancelled,", " The Application Will Now Continue As " + CurrentVersion() + "", "OK")
+                ModuleContructor() //Continues Application
+            ELSEIF MsgBoxResult = 3 THEN //If User Selects Changelog, Changelog is Displayed
+                cmd = "https://www.atomix.one/changelog/" //Opens Changelog in Default Browser
+        ENDIF
+
+        IF Currentversion() => LatestVersion() THEN //If User is on Latest Version, it will not check for updates
+            ModuleContructor() //Executes The Modules Required by the Application At Launch
+        ENDIF
+    END CheckUpdate
+
+
+
+    // Reads Called File Content And Populates Arrays
+    BEGIN FileReader
+    Path = ""
+    Array = ""
+
+        IF Sender.Param = TweakState THEN //If FileReader(TweakState) is called, it will read the TweakState File
+        Path = "../TweakState.yml" //Path to TweakState File
+        Array = TweaksStateArray() //Selects Array to Populate
+            OPEN Path() for INPUT //Opens File for Reading
+            i = 1 //Sets First Array Index to 1
+            READ Array(i) from Path() //Prime Read For Empty File Check
+            WHILE Not EOF //Reads File Until End Of File
+                i = i + 1 //Increments Array Index
+                READ Array(i) from Path() //Reads File Contents into Array
+            ENDWHILE
+        ENDIF
+        
+        IF Sender.Param = TweakDefaults THEN //If FileReader(TweakDefaults) is called, it will read the TweakDefaults File
+        Path = "../TweakDefaults.yml" //Path to Tweak Defaults File
+        Array = TweaksDefaultsArray() //Selects Array to Populate
+            OPEN Path() for INPUT //Opens File for Reading
+            i = 1 //Sets First Array Index to 1
+            READ Array(i) from Path() //Prime Read For Empty File Check
+            WHILE Not EOF //Reads File Until End Of File
+                i = i + 1 //Increments Array Index
+                READ Array(i) from Path() //Reads File Content Into Array
+            ENDWHILE
+        ENDIF
+
+        IF Sender.Param = StartupApps THEN //If FileReader(StartupApps) is called, it will read the StartupApps File
+        Path = "../StartupApps.yml" //Path to Startup Apps File
+        Array = StartupAppsArray() //Selects Array to Populate
+            OPEN Path() for INPUT //Opens File for Reading
+            i = 1 //Sets First Array Index to 1
+            READ Array(i) from Path() //Prime Read For Empty File Check
+            WHILE Not EOF //Reads File Until End Of File
+                i = i + 1 //Increments Array Index
+                READ Array(i) from Path() //Reads File Content Into Array
+            ENDWHILE
+        ENDIF
+    END FileReader
+    
+
+
+    // Detects Startup Apps and Populates Startup Apps File
+    BEGIN DetectStartupApps
+    Query = ""
+    Array = ""
+    Path = "../StartupApps.yml" //Path to Startup Apps File
+    i = 1
+
+        IF Sender.Param = CLR THEN //If DetectStartupApps(CLR) is called, it will clear the Startup Apps List
+            OPEN Path() for OUTPUT //Opens File for Writing -> Clears File Contents
+            WRITE "" to Path() //Writes Empty String to File
+            CLOSE Path() //Closes File
+        ENDIF
+
+        IF Sender.Param = QueryRegedit THEN //If DetectStartupApps(QueryRegedit) is called, it will query the Registry for Startup Apps
+        Query = "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" //Registry Key to Query
+        Array = StartupAppsRegeditArray() //Selects Array to Populate
+
+            OPEN Path() for APPEND //Opens File for Writing -> APPEND
+                FOR EACH Key IN Query() //Loops Through Registry Key
+                    Array(i) = Key //Populates Array with Registry Key Contents
+                    i = i + 1 //Increments Array Index
+                    APPEND Array(i) to Path() //Writes Array Contents to File
+                NEXT Key //Next Registry Key
+            CLOSE Path() //Closes File
+        ENDIF
+
+        IF Sender.Param = QueryShell THEN //If DetectStartupApps(QueryShell) is called, it will query the shell:startup folder for Startup Apps
+        Query = "shell:startup" //Folder to Query
+        Array = StartupAppsShellArray() //Selects Array to Populate
+
+            OPEN Path() for APPEND //Opens File for Writing -> APPEND
+                FOR EACH File IN Query() //Loops Through Folder
+                    Array(i) = File //Populates Array with Folder Contents
+                    i = i + 1 //Increments Array Index
+                    APPEND Array(i) to Path() //Writes Array Contents to File
+                NEXT File //Next Folder File
+            CLOSE Path() //Closes File
+        ENDIF
+
+        IF Sender.Param = QueryTask THEN //If DetectStartupApps(QueryTask) is called, it will query the Task Scheduler for Startup Apps
+        Query = "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache\Tree" //Registry Key to Query
+        Array = StartupAppsTaskArray() //Selects Array to Populate
+
+            OPEN Path() for APPEND //Opens File for Writing -> APPEND
+                FOR EACH Key IN Query() //Loops Through Registry Key
+                    Array(i) = Key //Populates Array with Registry Key Contents
+                    i = i + 1 //Increments Array Index
+                    APPEND Array(i) to Path() //Writes Array Contents to File
+                NEXT Key //Next Registry Key
+            CLOSE Path() //Closes File
+        ENDIF
+
+        IF Sender.Param = QueryServices THEN //If DetectStartupApps(QueryServices) is called, it will query the Services for Startup Apps
+        // I dont know how to query the services for startup apps yet as its not an easy task
+        ENDIF
+    END DetectStartupApps
+
+END
